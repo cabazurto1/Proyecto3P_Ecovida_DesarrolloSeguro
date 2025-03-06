@@ -1,0 +1,253 @@
+/* Estilos generales */
+.shop {
+    text-align: center;
+    padding: 50px;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.shop h1 {
+    color: #4CAF50;
+    font-size: 2.5em;
+    margin-bottom: 20px;
+}
+
+/* Grid de productos */
+.product-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 20px;
+    justify-content: center;
+    margin-top: 20px;
+}
+
+.product-card {
+    background: #222;
+    padding: 20px;
+    border-radius: 10px;
+    text-align: center;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+    transition: transform 0.3s ease;
+}
+
+.product-card:hover {
+    transform: scale(1.05);
+}
+
+.product-image {
+    width: 100%;
+    height: 150px;
+    object-fit: cover;
+    border-radius: 5px;
+    margin-bottom: 10px;
+}
+
+.product-info h3 {
+    color: #fff;
+    font-size: 1.5em;
+    margin: 10px 0;
+}
+
+.product-description {
+    color: #ccc;
+    font-size: 1em;
+    margin-bottom: 10px;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    height: 60px;
+}
+
+.product-price {
+    color: #4CAF50;
+    font-size: 1.2em;
+    font-weight: bold;
+    margin-bottom: 15px;
+}
+
+/* Nuevos estilos para control de cantidad */
+.quantity-controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 15px;
+}
+
+.quantity-btn {
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.quantity-btn:hover:not(:disabled) {
+    background-color: #388E3C;
+}
+
+.quantity-btn:disabled {
+    background-color: #555;
+    cursor: not-allowed;
+}
+
+.quantity-display {
+    margin: 0 15px;
+    font-weight: bold;
+    min-width: 30px;
+    text-align: center;
+    color: #fff;
+}
+
+/* Estilos para información de stock */
+.stock-info {
+    margin-bottom: 15px;
+    font-size: 0.9rem;
+}
+
+.in-stock {
+    color: #4CAF50;
+}
+
+.out-of-stock {
+    color: #ff5252;
+}
+
+/* Botón de agregar al carrito */
+.add-to-cart-btn {
+    background: #4CAF50;
+    color: #fff;
+    border: none;
+    padding: 10px 15px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background 0.3s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    font-size: 1rem;
+}
+
+.add-to-cart-btn:hover:not(:disabled) {
+    background: #388E3C;
+}
+
+.add-to-cart-btn:disabled {
+    background: #555;
+    cursor: not-allowed;
+}
+
+/* Estilos del carrito */
+.cart {
+    margin-top: 40px;
+    background: #333;
+    padding: 20px;
+    border-radius: 10px;
+    display: inline-block;
+    width: 50%;
+}
+
+.cart h2 {
+    color: #fff;
+    margin-bottom: 15px;
+}
+
+.empty-cart {
+    color: #ccc;
+}
+
+.cart-list {
+    list-style: none;
+    padding: 0;
+}
+
+.cart-item {
+    display: flex;
+    justify-content: space-between;
+    color: #fff;
+    padding: 10px;
+    border-bottom: 1px solid #444;
+}
+
+.cart-price {
+    font-weight: bold;
+    color: #4CAF50;
+}
+
+/* Estilos del header con carrito */
+.shop-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px;
+}
+
+.cart-icon {
+    position: relative;
+    font-size: 24px;
+    text-decoration: none;
+    color: white;
+}
+
+.cart-count {
+    background: red;
+    color: white;
+    border-radius: 50%;
+    padding: 3px 8px;
+    font-size: 14px;
+    position: absolute;
+    top: -5px;
+    right: -10px;
+}
+
+/* Mensajes de carga y error */
+.loading {
+    text-align: center;
+    padding: 40px;
+    font-size: 1.2rem;
+    color: #4CAF50;
+}
+
+.error-message {
+    text-align: center;
+    padding: 40px;
+    color: #ff5252;
+    font-size: 1.2rem;
+}
+
+/* Estilos responsivos */
+@media (max-width: 768px) {
+    .shop {
+        padding: 20px;
+    }
+    
+    .product-grid {
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    }
+    
+    .cart {
+        width: 80%;
+    }
+}
+
+@media (max-width: 480px) {
+    .product-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .cart {
+        width: 100%;
+    }
+    
+    .shop h1 {
+        font-size: 2em;
+    }
+}

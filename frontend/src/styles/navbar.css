@@ -1,0 +1,42 @@
+.navbar {
+    background: #2F3E1F; /* Verde oscuro del logo */
+    padding: 15px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: #E1D5A3; /* Beige del logo */
+    font-family: "Arial", sans-serif;
+  }
+  
+  .logo-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  
+  .logo {
+    height: 40px;
+    width: auto;
+  }
+  
+  .navbar h1 {
+    font-size: 1.8em;
+  }
+  
+  .navbar ul {
+    list-style: none;
+    display: flex;
+    gap: 15px;
+  }
+  
+  .navbar a {
+    text-decoration: none;
+    color: #E1D5A3; /* Beige */
+    font-weight: bold;
+    transition: color 0.3s;
+  }
+  
+  .navbar a:hover {
+    color: #A3A071; /* Un tono más suave para el hover */
+  }
+  
