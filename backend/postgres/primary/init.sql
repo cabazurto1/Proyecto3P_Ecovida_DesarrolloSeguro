@@ -99,6 +99,16 @@ CREATE TABLE tickets (
     estado VARCHAR(20) CHECK (estado IN ('Abierto', 'Cerrado'))
 );
 
+-- Tabla para almacenar los productos que lleva cada pedido
+CREATE TABLE pedido_detalles (
+    id SERIAL PRIMARY KEY,
+    pedido_id INT REFERENCES pedidos(id),
+    producto_id INT REFERENCES productos(id),
+    cantidad INT NOT NULL,
+    precio DECIMAL(10, 2) NOT NULL  -- Se guarda el precio unitario al momento de la compra
+);
+
+
 -- Disparadores
 CREATE TRIGGER after_usuarios_changes
 AFTER INSERT OR UPDATE OR DELETE ON usuarios

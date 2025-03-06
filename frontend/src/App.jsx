@@ -10,8 +10,10 @@ import Navbar from "./components/Navbar";
 import Footer from "./components/Footer";
 import AdminProducts from "./pages/AdminProducts";
 import Cart from "./pages/Cart";
+import Orders from "./pages/Orders"; // Importar tu Orders.jsx
+import OrderConfirmation from "./pages/OrderConfirmation"; // Importar la nueva
 import { AuthProvider } from "./context/AuthContext";
-import { CartProvider } from "./context/CartContext"; // Importar el proveedor del carrito
+import { CartProvider } from "./context/CartContext";
 
 function App() {
   return (
@@ -26,7 +28,11 @@ function App() {
           <Route path="/registro" element={<Registro />} />
           <Route path="/login" element={<Login />} />
           <Route path="/admin/products" element={<AdminProducts />} />
-          <Route path="/cart" element={<Cart />} /> {/* Nueva ruta del carrito */}
+          <Route path="/cart" element={<Cart />} />
+
+          {/* NUEVAS RUTAS */}
+          <Route path="/my-orders" element={<Orders />} />
+          <Route path="/order-confirmation" element={<OrderConfirmation />} />
         </Routes>
         <Footer />
       </CartProvider>

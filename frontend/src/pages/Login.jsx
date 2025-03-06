@@ -19,8 +19,8 @@ const Login = () => {
     setError(null);
 
     try {
-      await login(credentials);
-      navigate("/"); // Redirigir a la página principal u otra
+      await login(credentials); // Llamamos a login del context
+      navigate("/"); // Redirigir a la página principal
     } catch (err) {
       setError("Error al iniciar sesión. Verifica tus credenciales.");
     }
@@ -31,8 +31,20 @@ const Login = () => {
       <h2>Iniciar Sesión</h2>
       {error && <p className="error">{error}</p>}
       <form onSubmit={handleSubmit}>
-        <input type="email" name="email" placeholder="Correo" required onChange={handleChange} />
-        <input type="password" name="password" placeholder="Contraseña" required onChange={handleChange} />
+        <input
+          type="email"
+          name="email"
+          placeholder="Correo"
+          required
+          onChange={handleChange}
+        />
+        <input
+          type="password"
+          name="password"
+          placeholder="Contraseña"
+          required
+          onChange={handleChange}
+        />
         <button type="submit">Ingresar</button>
       </form>
     </div>

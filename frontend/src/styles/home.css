@@ -140,3 +140,10 @@
     gap: 15px; /* Separación adecuada */
     margin-top: 20px;
   }
+
+  .home-buttons {
+    display: inline-flex;
+    gap: 15px; /* separa los btns */
+    margin-top: 20px;
+  }
+  

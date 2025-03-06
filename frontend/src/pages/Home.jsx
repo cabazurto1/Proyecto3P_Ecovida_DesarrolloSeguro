@@ -1,4 +1,4 @@
-// front/Home.jsx
+// src/pages/Home.jsx
 import React, { useContext } from "react";
 import { Link } from "react-router-dom";
 import { AuthContext } from "../context/AuthContext";
@@ -13,15 +13,27 @@ const Home = () => {
         <div className="hero-overlay">
           <h1>Bienvenidos a EcoVida</h1>
           <p>Fomentando la agricultura orgánica y la sostenibilidad</p>
+
           {user ? (
             <>
               <h3>Hola, {user.nombre} 👋</h3>
               <p>Gracias por ser parte de nuestra comunidad sostenible.</p>
-              <Link to="/shop" className="btn">Explorar Productos</Link>
-              {/* Si el usuario es Vendedor, mostramos el botón para registrar producto */}
-              {user.role === "Vendedor" && (
-                <Link to="/admin/products" className="btn">Registrar Producto</Link>
-              )}
+              <div className="home-buttons">
+                {/* Si es CLIENTE, mostramos “Explorar Productos” */}
+                {user.role === "Cliente" && (
+                  <Link to="/shop" className="btn">Explorar Productos</Link>
+                )}
+
+                {/* Solo Vendedor => Registrar producto */}
+                {user.role === "Vendedor" && (
+                  <Link to="/admin/products" className="btn">Registrar Producto</Link>
+                )}
+
+                {/* Link a My Orders solo para CLIENTE */}
+                {user.role === "Cliente" && (
+                  <Link to="/my-orders" className="btn">Ver Mis Pedidos</Link>
+                )}
+              </div>
             </>
           ) : (
             <>
@@ -40,7 +52,7 @@ const Home = () => {
           <section id="about" className="about fade-in">
             <h2>Nuestra Misión</h2>
             <p>
-              Apoyamos a pequeños agricultores, promovemos la salud pública y fomentamos el respeto por el medio ambiente mediante la venta de productos orgánicos.
+              Apoyamos a pequeños agricultores...
             </p>
           </section>
 
@@ -64,7 +76,7 @@ const Home = () => {
 
           <section id="education" className="education fade-in">
             <h2>Aprende sobre Sostenibilidad</h2>
-            <p>Visita nuestro blog para conocer más sobre la importancia de los productos orgánicos.</p>
+            <p>Visita nuestro blog para conocer más...</p>
             <Link to="/blog" className="btn">Visitar Blog</Link>
           </section>
         </>

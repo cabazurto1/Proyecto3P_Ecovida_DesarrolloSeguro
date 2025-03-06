@@ -24,7 +24,7 @@ services:
       - "3001:3001"
     depends_on:
       - postgres_primary
-      - usuarios_service # Asegurar que usuarios_service esté disponible
+      - usuarios_service
     entrypoint: /bin/bash -c "until nc -z -v -w30 postgres_primary 5432; do echo 'Waiting for database...'; sleep 5; done; npm start"
     environment:
       - DATABASE_URL=postgres://postgres:primary_password@postgres_primary:5432/primary_db
@@ -96,3 +96,95 @@ services:
       - usuarios_service
       - envios_service
     restart: always
+
+  # Servicio para correr las pruebas del microservicio de carrito
+  carrito_tests:
+    build:
+      context: ./carrito
+    container_name: carrito_tests
+    depends_on:
+      - postgres_primary
+      - usuarios_service
+    entrypoint: >
+      /bin/bash -c "
+        until nc -z -v -w30 postgres_primary 5432; do
+          echo 'Waiting for database...';
+          sleep 5;
+        done;
+        until nc -z -v -w30 usuarios_service 3004; do
+          echo 'Waiting for usuarios_service...';
+          sleep 5;
+        done;
+        npm run test
+      "
+    environment:
+      - DATABASE_URL=postgres://postgres:primary_password@postgres_primary:5432/primary_db
+
+  # Servicio para correr las pruebas del microservicio de productos
+  productos_tests:
+    build:
+      context: ./productos
+    container_name: productos_tests
+    depends_on:
+      - postgres_primary
+      - usuarios_service
+    entrypoint: >
+      /bin/bash -c "
+        until nc -z -v -w30 postgres_primary 5432; do
+          echo 'Waiting for database...';
+          sleep 5;
+        done;
+        until nc -z -v -w30 usuarios_service 3004; do
+          echo 'Waiting for usuarios_service...';
+          sleep 5;
+        done;
+        npm run test
+      "
+    environment:
+      - DATABASE_URL=postgres://postgres:primary_password@postgres_primary:5432/primary_db
+
+  # Servicio para correr las pruebas del microservicio de pedidos
+  pedidos_tests:
+    build:
+      context: ./pedidos
+    container_name: pedidos_tests
+    depends_on:
+      - postgres_primary
+      - usuarios_service
+      - productos_service
+    entrypoint: >
+      /bin/bash -c "
+        until nc -z -v -w30 postgres_primary 5432; do
+          echo 'Waiting for database...';
+          sleep 5;
+        done;
+        until nc -z -v -w30 usuarios_service 3004; do
+          echo 'Waiting for usuarios_service...';
+          sleep 5;
+        done;
+        until nc -z -v -w30 productos_service 3001; do
+          echo 'Waiting for productos_service...';
+          sleep 5;
+        done;
+        npm run test
+      "
+    environment:
+      - DATABASE_URL=postgres://postgres:primary_password@postgres_primary:5432/primary_db
+
+  # Servicio para correr las pruebas del microservicio de usuarios
+  usuarios_tests:
+    build:
+      context: ./usuarios
+    container_name: usuarios_tests
+    depends_on:
+      - postgres_primary
+    entrypoint: >
+      /bin/bash -c "
+        until nc -z -v -w30 postgres_primary 5432; do
+          echo 'Waiting for database...';
+          sleep 5;
+        done;
+        npm run test
+      "
+    environment:
+      - DATABASE_URL=postgres://postgres:primary_password@postgres_primary:5432/primary_db

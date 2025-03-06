@@ -1,87 +1,95 @@
 const express = require('express');
-const jwt = require('jsonwebtoken'); // Para manejar tokens
-const Joi = require('joi'); // Para validar datos de entrada
-const axios = require('axios'); // Para solicitudes HTTP
+const jwt = require('jsonwebtoken');
+const Joi = require('joi');
+const axios = require('axios');
 const router = express.Router();
 const { Client } = require('pg');
 
-let jwtSecret; // Variable para almacenar la clave JWT dinámica
+let jwtSecret;
 
-// Configuración para la conexión a la base de datos PostgreSQL
 const client = new Client({
   connectionString: process.env.DATABASE_URL,
 });
-
 client.connect();
 
-// Función para obtener la clave JWT desde usuarios_service
+// Obtener clave JWT de usuarios_service
 const fetchJwtSecret = async () => {
   try {
     const response = await axios.get('http://usuarios_service:3004/usuarios/jwt-secret');
     jwtSecret = response.data.secret;
-    console.log('JWT Secret obtenido dinámicamente:', jwtSecret);
+    console.log('JWT Secret:', jwtSecret);
   } catch (error) {
-    console.error('Error al obtener JWT Secret desde usuarios_service:', error.message);
+    console.error('Error al obtener JWT Secret:', error.message);
     throw new Error('No se pudo obtener el JWT Secret');
   }
 };
 
-// Middleware para verificar el token
 const authenticateToken = async (req, res, next) => {
   if (!jwtSecret) {
     try {
-      await fetchJwtSecret(); // Obtener la clave JWT si no está disponible
+      await fetchJwtSecret();
     } catch (error) {
-      return res.status(500).send('Error interno al verificar el token.');
+      return res.status(500).json({ error: 'Error interno al verificar token.' });
     }
   }
 
   const token = req.headers['authorization'];
-
-  if (!token) return res.status(401).send('Acceso denegado. No se proporcionó un token.');
+  if (!token) return res.status(401).json({ error: 'Acceso denegado. No hay token.' });
 
   jwt.verify(token.split(' ')[1], jwtSecret, (err, user) => {
-    if (err) return res.status(403).send('Token inválido.');
-    req.user = user; // Adjuntar el usuario decodificado al objeto `req`
+    if (err) return res.status(403).json({ error: 'Token inválido.' });
+    req.user = user;
     next();
   });
 };
 
-// Middleware para verificar roles
 const authorizeRoles = (roles) => {
   return (req, res, next) => {
     if (!roles.includes(req.user.role)) {
-      return res.status(403).send('Acceso denegado. No tienes permiso para realizar esta acción.');
+      return res.status(403).json({ error: 'No tienes permiso para esta acción.' });
     }
     next();
   };
 };
 
-// Validación de datos con Joi
+// Aseguramos que precio > 0 y stock > 0
 const productSchema = Joi.object({
-  nombre: Joi.string().required(),
+  nombre: Joi.string().min(1).required().messages({
+    'string.empty': 'El nombre no puede estar vacío.',
+    'any.required': 'El nombre es obligatorio.'
+  }),
   descripcion: Joi.string().allow(''),
-  precio: Joi.number().positive().required(),
+  precio: Joi.number().greater(0).required().messages({
+    'number.base': 'El precio debe ser un número.',
+    'number.greater': 'El precio debe ser mayor que 0.',
+    'any.required': 'El precio es obligatorio.'
+  }),
   categoria: Joi.string().allow(''),
-  stock: Joi.number().integer().required(),
+  stock: Joi.number().integer().greater(0).required().messages({
+    'number.base': 'El stock debe ser un número entero.',
+    'number.greater': 'El stock debe ser mayor que 0.',
+    'any.required': 'El stock es obligatorio.'
+  }),
   imagenes: Joi.array().items(Joi.string()).optional(),
 });
 
-// Ruta para obtener todos los productos (acceso público)
+// Obtener todos los productos (público)
 router.get('/', async (req, res) => {
   try {
     const result = await client.query('SELECT * FROM productos');
     res.json(result.rows);
   } catch (err) {
     console.error('Error en la consulta', err);
-    res.status(500).send('Error en el servidor');
+    res.status(500).json({ error: 'Error en el servidor.' });
   }
 });
 
-// Ruta para agregar un nuevo producto (solo Administrador o Vendedor)
+// Crear producto (Administrador / Vendedor)
 router.post('/', authenticateToken, authorizeRoles(['Administrador', 'Vendedor']), async (req, res) => {
   const { error } = productSchema.validate(req.body);
-  if (error) return res.status(400).send(error.details[0].message);
+  if (error) {
+    return res.status(400).json({ error: error.details[0].message });
+  }
 
   const { nombre, descripcion, precio, categoria, stock, imagenes } = req.body;
 
@@ -92,17 +100,18 @@ router.post('/', authenticateToken, authorizeRoles(['Administrador', 'Vendedor']
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
-    console.error('Error al insertar el producto', err);
-    res.status(500).send('Error en el servidor');
+    console.error('Error al insertar producto', err);
+    res.status(500).json({ error: 'Error en el servidor.' });
   }
 });
 
-// Ruta para actualizar un producto (solo Administrador o Vendedor)
+// Actualizar producto (Administrador / Vendedor)
 router.put('/:id', authenticateToken, authorizeRoles(['Administrador', 'Vendedor']), async (req, res) => {
   const { id } = req.params;
-
   const { error } = productSchema.validate(req.body);
-  if (error) return res.status(400).send(error.details[0].message);
+  if (error) {
+    return res.status(400).json({ error: error.details[0].message });
+  }
 
   const { nombre, descripcion, precio, categoria, stock, imagenes } = req.body;
 
@@ -113,17 +122,17 @@ router.put('/:id', authenticateToken, authorizeRoles(['Administrador', 'Vendedor
     );
 
     if (result.rows.length === 0) {
-      return res.status(404).send('Producto no encontrado');
+      return res.status(404).json({ error: 'Producto no encontrado.' });
     }
 
     res.json(result.rows[0]);
   } catch (err) {
-    console.error('Error al actualizar el producto', err);
-    res.status(500).send('Error en el servidor');
+    console.error('Error al actualizar producto', err);
+    res.status(500).json({ error: 'Error en el servidor.' });
   }
 });
 
-// Ruta para eliminar un producto (solo Administrador)
+// Eliminar producto (Administrador, Vendedor)
 router.delete('/:id', authenticateToken, authorizeRoles(['Administrador', 'Vendedor']), async (req, res) => {
   const { id } = req.params;
 
@@ -131,31 +140,29 @@ router.delete('/:id', authenticateToken, authorizeRoles(['Administrador', 'Vende
     const result = await client.query('DELETE FROM productos WHERE id = $1 RETURNING *', [id]);
 
     if (result.rows.length === 0) {
-      return res.status(404).send('Producto no encontrado');
+      return res.status(404).json({ error: 'Producto no encontrado.' });
     }
 
     res.status(204).send();
   } catch (err) {
-    console.error('Error al eliminar el producto', err);
-    res.status(500).send('Error en el servidor');
+    console.error('Error al eliminar producto', err);
+    res.status(500).json({ error: 'Error en el servidor.' });
   }
 });
 
-// Ruta para obtener un producto por su ID (acceso público)
+// Obtener producto por ID (público)
 router.get('/:id', async (req, res) => {
   const { id } = req.params;
 
   try {
     const result = await client.query('SELECT * FROM productos WHERE id = $1', [id]);
-
     if (result.rows.length === 0) {
-      return res.status(404).send('Producto no encontrado');
+      return res.status(404).json({ error: 'Producto no encontrado.' });
     }
-
     res.json(result.rows[0]);
   } catch (err) {
     console.error('Error en la consulta', err);
-    res.status(500).send('Error en el servidor');
+    res.status(500).json({ error: 'Error en el servidor.' });
   }
 });
 

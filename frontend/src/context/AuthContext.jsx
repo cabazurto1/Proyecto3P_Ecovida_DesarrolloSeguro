@@ -1,36 +1,54 @@
 // src/context/AuthContext.js
 import React, { createContext, useState, useEffect } from "react";
-import { jwtDecode } from "jwt-decode"; // Corrección de importación
+// IMPORTANTE: usar import jwtDecode from "jwt-decode";
+import {jwtDecode} from "jwt-decode";
 
 export const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
-  // Obtener la URL del backend desde variables de entorno
+  // URL de usuarios (para login). A veces puedes usar solo "/usuarios/login"
+  // si tu Nginx reescribe /usuarios -> usuarios_service:3004
   const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3004";
 
-  // Intentar cargar el token almacenado en localStorage (si existe)
+  // Leemos token existente en localStorage
   const storedToken = localStorage.getItem("token");
-  const [token, setToken] = useState(storedToken);
-  const [user, setUser] = useState(storedToken ? jwtDecode(storedToken) : null);
+  const [token, setToken] = useState(storedToken || null);
 
-  // Cuando el token cambie, actualizar localStorage y el estado del usuario
+  // Decodificamos token si existe
+  const [user, setUser] = useState(() => {
+    if (storedToken) {
+      try {
+        return jwtDecode(storedToken);
+      } catch (err) {
+        console.error("Error al decodificar token almacenado:", err);
+        return null;
+      }
+    }
+    return null;
+  });
+
+  // Cada vez que token cambie, lo guardamos
   useEffect(() => {
     if (token) {
       localStorage.setItem("token", token);
-      setUser(jwtDecode(token)); // Corrección del uso de jwtDecode
+      try {
+        const decoded = jwtDecode(token);
+        setUser(decoded);
+      } catch (err) {
+        console.error("Error al decodificar nuevo token:", err);
+        setUser(null);
+      }
     } else {
       localStorage.removeItem("token");
       setUser(null);
     }
   }, [token]);
 
-  // Función para iniciar sesión
+  // Iniciar sesión => POST /usuarios/login
   const login = async (credentials) => {
-    const response = await fetch(`${API_URL}/usuarios/login`, { // URL corregida
+    const response = await fetch(`${API_URL}/usuarios/login`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(credentials),
     });
 
@@ -39,11 +57,12 @@ export const AuthProvider = ({ children }) => {
       throw new Error(errorMsg);
     }
 
+    // Esperamos que retorne { token: "..." }
     const data = await response.json();
     setToken(data.token);
   };
 
-  // Función para cerrar sesión
+  // Cerrar sesión
   const logout = () => {
     setToken(null);
   };

@@ -1,172 +1,205 @@
+// pedidos/routes/pedidos.js
 const express = require('express');
-const jwt = require('jsonwebtoken'); // Para manejar tokens
-const axios = require('axios'); // Para solicitudes HTTP
-const Joi = require('joi'); // Validación de datos
+const jwt = require('jsonwebtoken');
+const axios = require('axios');
+const Joi = require('joi');
 const router = express.Router();
 const { Client } = require('pg');
 
-let jwtSecret; // Variable para almacenar la clave JWT dinámica
+let jwtSecret;
 
-// Configuración para la conexión a PostgreSQL
 const client = new Client({
   connectionString: process.env.DATABASE_URL,
 });
 client.connect();
 
-// Función para obtener la clave JWT dinámica desde usuarios_service
+// Obtener clave JWT
 const fetchJwtSecret = async () => {
   try {
     const response = await axios.get('http://usuarios_service:3004/usuarios/jwt-secret');
     jwtSecret = response.data.secret;
-    console.log('JWT Secret obtenido dinámicamente:', jwtSecret);
   } catch (error) {
-    console.error('Error al obtener JWT Secret desde usuarios_service:', error.message);
+    console.error('Error al obtener JWT Secret:', error.message);
     throw new Error('No se pudo obtener el JWT Secret');
   }
 };
 
-// Middleware para autenticar el token
 const authenticateToken = async (req, res, next) => {
   if (!jwtSecret) {
     try {
-      await fetchJwtSecret(); // Obtener el JWT_SECRET si no está disponible
+      await fetchJwtSecret();
     } catch (error) {
-      return res.status(500).send('Error interno al verificar el token.');
+      return res.status(500).json({ error: 'Error interno al verificar token.' });
     }
   }
-
-  const token = req.headers['authorization'];
-  if (!token) return res.status(401).send('Acceso denegado. No se proporcionó un token.');
+  const token = req.headers.authorization;
+  if (!token) return res.status(401).json({ error: 'No se proporcionó token.' });
 
   jwt.verify(token.split(' ')[1], jwtSecret, (err, user) => {
-    if (err) return res.status(403).send('Token inválido.');
-    req.user = user; // Adjuntar el usuario decodificado al objeto `req`
+    if (err) return res.status(403).json({ error: 'Token inválido.' });
+    req.user = user; // user.id, user.role, etc.
     next();
   });
 };
 
-// Middleware para autorizar roles
-const authorizeRoles = (roles) => {
-  return (req, res, next) => {
-    if (!roles.includes(req.user.role)) {
-      return res.status(403).send('Acceso denegado. No tienes permiso para realizar esta acción.');
-    }
-    next();
-  };
-};
-
-// Validación de datos con Joi
 const pedidoSchema = Joi.object({
-  usuario_id: Joi.number().integer().required(),
   direccion_envio: Joi.string().min(5).required(),
 });
 
-// Ruta para obtener todos los pedidos
+// GET /pedidos – Retorna pedidos junto con sus productos
 router.get('/', authenticateToken, async (req, res) => {
   try {
-    let pedidos;
-
+    let query;
+    let params;
+    
+    // Si es Cliente, solo sus pedidos; si es Admin, todos
     if (req.user.role === 'Cliente') {
-      pedidos = await client.query('SELECT * FROM pedidos WHERE usuario_id = $1', [req.user.id]);
+      query = `
+        SELECT p.*,
+          -- Agrupamos detalles en un array JSON
+          COALESCE(json_agg(
+            json_build_object(
+              'producto_id', d.producto_id,
+              'cantidad', d.cantidad,
+              'precio_unitario', d.precio,
+              'nombre', prod.nombre
+            )
+          ) FILTER (WHERE d.id IS NOT NULL), '[]') AS items
+        FROM pedidos p
+        LEFT JOIN pedido_detalles d ON p.id = d.pedido_id
+        LEFT JOIN productos prod ON d.producto_id = prod.id
+        WHERE p.usuario_id = $1
+        GROUP BY p.id
+        ORDER BY p.id;
+      `;
+      params = [req.user.id];
     } else if (req.user.role === 'Administrador') {
-      pedidos = await client.query('SELECT * FROM pedidos');
+      query = `
+        SELECT p.*,
+          COALESCE(json_agg(
+            json_build_object(
+              'producto_id', d.producto_id,
+              'cantidad', d.cantidad,
+              'precio_unitario', d.precio,
+              'nombre', prod.nombre
+            )
+          ) FILTER (WHERE d.id IS NOT NULL), '[]') AS items
+        FROM pedidos p
+        LEFT JOIN pedido_detalles d ON p.id = d.pedido_id
+        LEFT JOIN productos prod ON d.producto_id = prod.id
+        GROUP BY p.id
+        ORDER BY p.id;
+      `;
+      params = [];
     } else {
-      return res.status(403).send('Acceso denegado.');
+      return res.status(403).json({ error: 'Acceso denegado.' });
     }
 
-    res.json(pedidos.rows);
+    const result = await client.query(query, params);
+    res.json(result.rows);
   } catch (err) {
     console.error('Error al obtener pedidos:', err);
-    res.status(500).send('Error en el servidor.');
+    res.status(500).json({ error: 'Error en el servidor.' });
   }
 });
 
-// Ruta para crear un pedido
+// POST /pedidos – Crear un pedido
 router.post('/', authenticateToken, async (req, res) => {
   const { error } = pedidoSchema.validate(req.body);
-  if (error) return res.status(400).send(error.details[0].message);
-
-  const { usuario_id, direccion_envio } = req.body;
+  if (error) return res.status(400).json({ success: false, error: error.details[0].message });
 
   if (req.user.role !== 'Cliente' && req.user.role !== 'Administrador') {
-    return res.status(403).send('Acceso denegado. Solo clientes o administradores pueden crear pedidos.');
+    return res.status(403).json({ success: false, error: 'No tienes permisos para crear pedidos.' });
   }
+
+  const usuario_id = req.user.id; // lo sacamos del token
+  const { direccion_envio } = req.body;
 
   try {
     await client.query('BEGIN');
 
-    // Obtener productos del carrito del usuario
-    const carritoResult = await client.query(
-      'SELECT producto_id, cantidad FROM carrito WHERE usuario_id = $1',
-      [usuario_id]
-    );
+    // 1) Obtener carrito del usuario
+    const carritoRes = await client.query(`
+      SELECT c.producto_id, c.cantidad, p.precio, p.stock 
+      FROM carrito c 
+      JOIN productos p ON c.producto_id = p.id 
+      WHERE c.usuario_id = $1
+    `, [usuario_id]);
 
-    if (carritoResult.rows.length === 0) {
-      throw new Error('El carrito está vacío. No se puede crear un pedido.');
+    if (carritoRes.rows.length === 0) {
+      throw new Error('El carrito está vacío. No se puede crear pedido.');
     }
 
-    const carritoItems = carritoResult.rows;
-
-    // Validar stock y calcular el total
-    const productIds = carritoItems.map(item => item.producto_id);
-    const productosResult = await client.query(
-      'SELECT id, stock, precio FROM productos WHERE id = ANY($1)',
-      [productIds]
-    );
-
-    const productosInfo = productosResult.rows.reduce((acc, producto) => {
-      acc[producto.id] = producto;
-      return acc;
-    }, {});
-
+    // 2) Validar stock y calcular total
     let totalPedido = 0;
-    for (const item of carritoItems) {
-      const producto = productosInfo[item.producto_id];
-      if (!producto) throw new Error(`Producto con ID ${item.producto_id} no encontrado.`);
-      if (producto.stock < item.cantidad) throw new Error(`Stock insuficiente para el producto con ID ${item.producto_id}.`);
+    for (const item of carritoRes.rows) {
+      if (item.stock < item.cantidad) {
+        throw new Error(`Stock insuficiente para el producto con ID ${item.producto_id}.`);
+      }
+      totalPedido += parseFloat(item.precio) * item.cantidad;
 
-      totalPedido += producto.precio * item.cantidad;
-
+      // Descontar stock
       await client.query(
         'UPDATE productos SET stock = stock - $1 WHERE id = $2',
         [item.cantidad, item.producto_id]
       );
     }
 
-    // Crear el pedido
-    const pedidoResult = await client.query(
-      'INSERT INTO pedidos (usuario_id, total, estado) VALUES ($1, $2, $3) RETURNING id',
-      [usuario_id, totalPedido, 'Pendiente']
-    );
+    // 3) Crear pedido
+    const pedidoRes = await client.query(`
+      INSERT INTO pedidos (usuario_id, total, estado) 
+      VALUES ($1, $2, $3) 
+      RETURNING id
+    `, [usuario_id, totalPedido, 'Pendiente']);
+    const pedidoId = pedidoRes.rows[0].id;
 
-    const pedidoId = pedidoResult.rows[0].id;
+    // 4) Copiar los items del carrito a pedido_detalles
+    for (const item of carritoRes.rows) {
+      await client.query(`
+        INSERT INTO pedido_detalles (pedido_id, producto_id, cantidad, precio)
+        VALUES ($1, $2, $3, $4)
+      `, [
+        pedidoId,
+        item.producto_id,
+        item.cantidad,
+        item.precio   // precio unitario al momento de la compra
+      ]);
+    }
 
-    // Vaciar carrito
+    // 5) Vaciar carrito
     await client.query('DELETE FROM carrito WHERE usuario_id = $1', [usuario_id]);
 
-    // Registrar dirección de envío
-    await client.query(
-      'INSERT INTO envios (pedido_id, direccion, estado) VALUES ($1, $2, $3)',
-      [pedidoId, direccion_envio, 'En Proceso']
-    );
+    // 6) Registrar envío
+    await client.query(`
+      INSERT INTO envios (pedido_id, direccion, estado)
+      VALUES ($1, $2, $3)
+    `, [pedidoId, direccion_envio, 'En Proceso']);
 
     await client.query('COMMIT');
-    res.status(201).json({ success: true, pedidoId, total: totalPedido });
-  } catch (error) {
+
+    // Retornamos info del pedido
+    res.status(201).json({
+      success: true,
+      pedidoId,
+      total: totalPedido
+    });
+  } catch (err) {
     await client.query('ROLLBACK');
-    console.error('Error al crear el pedido:', error);
-    res.status(400).json({ success: false, error: error.message });
+    console.error('Error al crear pedido:', err);
+    res.status(400).json({ success: false, error: err.message });
   }
 });
 
-// Ruta para actualizar un pedido
+// Actualizar pedido (cambia estado, etc.)
 router.put('/:id', authenticateToken, async (req, res) => {
   const { id } = req.params;
   const { estado } = req.body;
 
   const estadosValidos = ['Pendiente', 'Completado', 'Cancelado'];
   if (estado && !estadosValidos.includes(estado)) {
-    return res.status(400).json({ error: `Estado inválido. Debe ser uno de: ${estadosValidos.join(', ')}` });
+    return res
+      .status(400)
+      .json({ error: `Estado inválido. Debe ser uno de: ${estadosValidos.join(', ')}.` });
   }
 
   try {
@@ -176,42 +209,43 @@ router.put('/:id', authenticateToken, async (req, res) => {
     }
 
     const pedido = pedidoResult.rows[0];
-
     if (req.user.role === 'Cliente') {
       if (pedido.usuario_id !== req.user.id) {
-        return res.status(403).send('Acceso denegado. Solo puedes editar tus propios pedidos.');
+        return res.status(403).json({ error: 'Solo puedes editar tus propios pedidos.' });
       }
       if (pedido.estado !== 'Pendiente') {
-        return res.status(403).send('Solo puedes editar pedidos que están en estado "Pendiente".');
+        return res.status(403).json({ error: 'Solo puedes editar pedidos en estado Pendiente.' });
       }
     }
 
-    const result = await client.query(
-      'UPDATE pedidos SET estado = $1 WHERE id = $2 RETURNING *',
-      [estado, id]
-    );
-
+    const result = await client.query('UPDATE pedidos SET estado = $1 WHERE id = $2 RETURNING *', [
+      estado,
+      id,
+    ]);
     res.json(result.rows[0]);
   } catch (err) {
     console.error('Error al actualizar pedido:', err);
-    res.status(500).send('Error en el servidor.');
+    res.status(500).json({ error: 'Error en el servidor.' });
   }
 });
 
-// Ruta para eliminar un pedido
-router.delete('/:id', authenticateToken, authorizeRoles(['Administrador']), async (req, res) => {
-  const { id } = req.params;
+// Eliminar pedido (admin)
+router.delete('/:id', authenticateToken, async (req, res) => {
+  // Podrías también usar authorizeRoles(['Administrador']) si deseas
+  if (req.user.role !== 'Administrador') {
+    return res.status(403).json({ error: 'Solo el administrador puede eliminar pedidos.' });
+  }
 
+  const { id } = req.params;
   try {
     const result = await client.query('DELETE FROM pedidos WHERE id = $1 RETURNING *', [id]);
     if (result.rows.length === 0) {
-      return res.status(404).send('Pedido no encontrado.');
+      return res.status(404).json({ error: 'Pedido no encontrado.' });
     }
-
     res.status(204).send();
   } catch (err) {
     console.error('Error al eliminar pedido:', err);
-    res.status(500).send('Error en el servidor.');
+    res.status(500).json({ error: 'Error en el servidor.' });
   }
 });
 

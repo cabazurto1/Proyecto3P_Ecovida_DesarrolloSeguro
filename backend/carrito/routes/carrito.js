@@ -1,184 +1,173 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
-const axios = require('axios'); // Para comunicación con otros microservicios
-const Joi = require('joi'); // Para validaciones
+const axios = require('axios');
+const Joi = require('joi');
 const router = express.Router();
 const { Client } = require('pg');
 
-let jwtSecret; // Almacenar dinámicamente el JWT_SECRET
+let jwtSecret;
 
-// Configuración para la conexión a la base de datos PostgreSQL
 const client = new Client({
   connectionString: process.env.DATABASE_URL,
 });
 client.connect();
 
-// Función para obtener la clave JWT desde usuarios_service
 const fetchJwtSecret = async () => {
   try {
     const response = await axios.get('http://usuarios_service:3004/usuarios/jwt-secret');
     jwtSecret = response.data.secret;
-    console.log('JWT Secret obtenido dinámicamente:', jwtSecret);
   } catch (error) {
-    console.error('Error al obtener JWT Secret desde usuarios_service:', error.message);
+    console.error('Error al obtener JWT Secret:', error.message);
     throw new Error('No se pudo obtener el JWT Secret');
   }
 };
 
-// Middleware para autenticar el token
 const authenticateToken = async (req, res, next) => {
   if (!jwtSecret) {
     try {
-      await fetchJwtSecret(); // Obtener el JWT_SECRET si no está disponible
+      await fetchJwtSecret();
     } catch (error) {
-      return res.status(500).send('Error interno al verificar el token.');
+      return res.status(500).json({ error: 'Error interno al verificar el token.' });
     }
   }
 
   const token = req.headers['authorization'];
-  if (!token) return res.status(401).send('Acceso denegado. No se proporcionó un token.');
+  if (!token) return res.status(401).json({ error: 'No se proporcionó token.' });
 
   jwt.verify(token.split(' ')[1], jwtSecret, (err, user) => {
-    if (err) return res.status(403).send('Token inválido.');
-    req.user = user; // Adjuntar el usuario decodificado al objeto `req`
+    if (err) return res.status(403).json({ error: 'Token inválido.' });
+    req.user = user;
     next();
   });
 };
 
-// Validación de datos con Joi
+// Validar datos al agregar/actualizar
 const carritoSchema = Joi.object({
-  producto_id: Joi.number().integer().positive().required().messages({
-    'number.base': 'El campo "producto_id" debe ser un número entero.',
-    'number.integer': 'El campo "producto_id" debe ser un número entero.',
-    'number.positive': 'El campo "producto_id" debe ser mayor a 0.',
-    'any.required': 'El campo "producto_id" es obligatorio.',
-  }),
-  cantidad: Joi.number().integer().positive().min(1).required().messages({
-    'number.base': 'El campo "cantidad" debe ser un número entero.',
-    'number.integer': 'El campo "cantidad" debe ser un número entero.',
-    'number.positive': 'El campo "cantidad" debe ser mayor a 0.',
-    'number.min': 'El campo "cantidad" debe ser al menos 1.',
-    'any.required': 'El campo "cantidad" es obligatorio.',
-  }),
+  producto_id: Joi.number().integer().positive().required(),
+  cantidad: Joi.number().integer().positive().min(1).required(),
 });
 
-// Ruta para obtener todos los items del carrito del usuario autenticado
+// Obtener items del carrito
+// Ejemplo: GET /carrito
 router.get('/', authenticateToken, async (req, res) => {
   try {
-    const carritoItems = await client.query(
-      'SELECT carrito.*, productos.nombre, productos.precio FROM carrito JOIN productos ON carrito.producto_id = productos.id WHERE usuario_id = $1',
-      [req.user.id]
-    );
-
-    // Calcular el precio total dinámicamente
-    const items = carritoItems.rows.map(item => ({
-      ...item,
-      precio_total: item.precio * item.cantidad,
-    }));
-
-    res.json(items);
+    const query = `
+      SELECT c.id, c.usuario_id, c.producto_id, c.cantidad,
+             p.nombre, p.precio, p.stock, p.categoria, p.imagenes
+      FROM carrito c
+      JOIN productos p ON c.producto_id = p.id
+      WHERE c.usuario_id = $1
+    `;
+    const result = await client.query(query, [req.user.id]);
+    res.json(result.rows);
   } catch (err) {
-    console.error('Error al obtener el carrito', err);
-    res.status(500).send('Error en el servidor.');
+    console.error('Error al obtener carrito', err);
+    res.status(500).json({ error: 'Error en el servidor.' });
   }
 });
 
-// Ruta para agregar un producto al carrito
+// Agregar producto al carrito
 router.post('/', authenticateToken, async (req, res) => {
   const { error } = carritoSchema.validate(req.body);
-  if (error) return res.status(400).send(error.details[0].message);
+  if (error) return res.status(400).json({ error: error.details[0].message });
 
   const { producto_id, cantidad } = req.body;
 
   try {
-    // Verificar si el producto existe y tiene suficiente stock
-    const productoResponse = await axios.get(`http://productos_service:3001/productos/${producto_id}`);
-    const producto = productoResponse.data;
-
+    // Verificar stock en productos
+    const productoRes = await client.query('SELECT * FROM productos WHERE id = $1', [producto_id]);
+    if (productoRes.rows.length === 0) {
+      return res.status(404).json({ error: 'El producto no existe.' });
+    }
+    const producto = productoRes.rows[0];
     if (producto.stock < cantidad) {
-      return res.status(400).send('No hay suficiente stock disponible.');
+      return res.status(400).json({ error: `No hay suficiente stock. Stock disponible: ${producto.stock}` });
     }
 
-    // Verificar si el producto ya está en el carrito
-    const existingItem = await client.query(
+    // Ver si ya está en el carrito
+    const existe = await client.query(
       'SELECT * FROM carrito WHERE usuario_id = $1 AND producto_id = $2',
       [req.user.id, producto_id]
     );
-
-    if (existingItem.rows.length > 0) {
-      // Actualizar la cantidad del producto existente
-      const newQuantity = existingItem.rows[0].cantidad + cantidad;
+    if (existe.rows.length > 0) {
+      // Actualizamos la cantidad
+      const nuevaCantidad = existe.rows[0].cantidad + cantidad;
+      if (nuevaCantidad > producto.stock) {
+        return res
+          .status(400)
+          .json({ error: `No hay suficiente stock para sumar esa cantidad. Stock disponible: ${producto.stock}` });
+      }
 
       await client.query(
-        'UPDATE carrito SET cantidad = $1 WHERE usuario_id = $2 AND producto_id = $3',
-        [newQuantity, req.user.id, producto_id]
+        'UPDATE carrito SET cantidad = $1 WHERE id = $2',
+        [nuevaCantidad, existe.rows[0].id]
       );
-      return res.status(200).send('Cantidad actualizada en el carrito.');
+      return res.status(200).json({ message: 'Cantidad actualizada en el carrito.' });
     }
 
-    // Agregar el producto al carrito
+    // Insertar nuevo
     await client.query(
       'INSERT INTO carrito (usuario_id, producto_id, cantidad) VALUES ($1, $2, $3)',
       [req.user.id, producto_id, cantidad]
     );
 
-    res.status(201).send('Producto agregado al carrito.');
+    res.status(201).json({ message: 'Producto agregado al carrito.' });
   } catch (err) {
-    console.error('Error al agregar al carrito', err);
-    res.status(500).send('Error en el servidor.');
+    console.error('Error al agregar al carrito:', err);
+    res.status(500).json({ error: 'Error en el servidor.' });
   }
 });
 
-// Ruta para actualizar un producto en el carrito
+// Actualizar cantidad
 router.put('/:id', authenticateToken, async (req, res) => {
-  const { id } = req.params;
-
-  const { error } = carritoSchema.validate(req.body);
-  if (error) return res.status(400).send(error.details[0].message);
-
+  // Aquí reutilizamos carritoSchema pero sin "producto_id"
   const { cantidad } = req.body;
+  const schema = Joi.object({
+    cantidad: Joi.number().integer().positive().required(),
+  });
+  const { error } = schema.validate({ cantidad });
+  if (error) return res.status(400).json({ error: error.details[0].message });
 
   try {
-    const carritoItem = await client.query('SELECT * FROM carrito WHERE id = $1 AND usuario_id = $2', [id, req.user.id]);
-
-    if (carritoItem.rows.length === 0) {
-      return res.status(404).send('Producto no encontrado en el carrito.');
+    // Primero buscamos el registro de carrito
+    const cartItemRes = await client.query('SELECT * FROM carrito WHERE id = $1 AND usuario_id = $2', [req.params.id, req.user.id]);
+    if (cartItemRes.rows.length === 0) {
+      return res.status(404).json({ error: 'No se encontró el producto en tu carrito.' });
     }
 
-    const productoResponse = await axios.get(`http://productos_service:3001/productos/${carritoItem.rows[0].producto_id}`);
-    const producto = productoResponse.data;
+    const cartItem = cartItemRes.rows[0];
+    const productoRes = await client.query('SELECT * FROM productos WHERE id = $1', [cartItem.producto_id]);
+    if (productoRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Producto no encontrado.' });
+    }
+    const producto = productoRes.rows[0];
 
-    if (producto.stock < cantidad) {
-      return res.status(400).send('No hay suficiente stock disponible.');
+    if (cantidad > producto.stock) {
+      return res.status(400).json({ error: `No hay suficiente stock. Stock disponible: ${producto.stock}` });
     }
 
-    await client.query(
-      'UPDATE carrito SET cantidad = $1 WHERE id = $2',
-      [cantidad, id]
-    );
-
-    res.status(200).send('Carrito actualizado.');
+    await client.query('UPDATE carrito SET cantidad = $1 WHERE id = $2', [cantidad, req.params.id]);
+    res.json({ message: 'Carrito actualizado.' });
   } catch (err) {
     console.error('Error al actualizar el carrito', err);
-    res.status(500).send('Error en el servidor.');
+    res.status(500).json({ error: 'Error en el servidor.' });
   }
 });
 
-// Ruta para eliminar un producto del carrito
+// Eliminar producto del carrito
 router.delete('/:id', authenticateToken, async (req, res) => {
-  const { id } = req.params;
-
   try {
-    const result = await client.query('DELETE FROM carrito WHERE id = $1 AND usuario_id = $2 RETURNING *', [id, req.user.id]);
-
+    const result = await client.query(
+      'DELETE FROM carrito WHERE id = $1 AND usuario_id = $2 RETURNING *',
+      [req.params.id, req.user.id]
+    );
     if (result.rows.length === 0) {
-      return res.status(404).send('Producto no encontrado en el carrito.');
+      return res.status(404).json({ error: 'Producto no encontrado en tu carrito.' });
     }
-
-    res.status(204).send();
+    res.status(200).json({ message: 'Producto eliminado del carrito.' });
   } catch (err) {
-    console.error('Error al eliminar el producto del carrito', err);
-    res.status(500).send('Error en el servidor.');
+    console.error('Error al eliminar producto del carrito', err);
+    res.status(500).json({ error: 'Error en el servidor.' });
   }
 });
 

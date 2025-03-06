@@ -1,72 +1,179 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useContext } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useCart } from "../context/CartContext";
 import { FaTrash, FaArrowLeft, FaPlus, FaMinus, FaShoppingCart } from "react-icons/fa";
+import { AuthContext } from "../context/AuthContext";
 import "../styles/cart.css";
 
 const Cart = () => {
-  const { 
-    cart, 
-    removeFromCart, 
-    updateQuantity, 
-    getCartTotal,
-    clearCart 
-  } = useCart();
-  
+  const { token } = useContext(AuthContext);
+
+  const [cart, setCart] = useState([]);
   const [shippingAddress, setShippingAddress] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState(false);
   const [orderError, setOrderError] = useState("");
-  
   const navigate = useNavigate();
 
-  // Función para manejar el cambio de cantidad
-  const handleQuantityChange = (item, change) => {
-    const newQuantity = item.quantity + change;
-    if (newQuantity > 0 && newQuantity <= item.stock) {
-      updateQuantity(item.id, newQuantity);
+  // Si no dockerizas el front, apunta a la URL de Nginx
+  const API_GATEWAY = "http://localhost";
+
+  // Función para parsear la imagen
+  const getItemImage = (item) => {
+    if (!item.imagenes) return "/assets/default.jpg";
+    try {
+      if (typeof item.imagenes === "string") {
+        const arr = JSON.parse(item.imagenes);
+        if (Array.isArray(arr) && arr.length > 0) return arr[0];
+        return item.imagenes;
+      } else if (Array.isArray(item.imagenes) && item.imagenes.length > 0) {
+        return item.imagenes[0];
+      }
+      return "/assets/default.jpg";
+    } catch {
+      return "/assets/default.jpg";
     }
   };
 
-  // Función para manejar el checkout
+  const fetchCart = async () => {
+    if (!token) {
+      setCart([]);
+      return;
+    }
+    try {
+      const res = await fetch(`${API_GATEWAY}/carrito`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        setCart([]);
+      } else {
+        const data = await res.json();
+        setCart(data);
+      }
+    } catch (err) {
+      console.error("Error al obtener carrito:", err);
+      setCart([]);
+    }
+  };
+
+  useEffect(() => {
+    fetchCart();
+  }, [token]);
+
+  const getCartTotal = () => {
+    return cart.reduce((acc, item) => {
+      const price = parseFloat(item.precio) || 0;
+      return acc + price * item.cantidad;
+    }, 0);
+  };
+
+  // Cambiar cantidad
+  const handleQuantityChange = async (item, change) => {
+    setOrderError("");
+    if (!token) {
+      setOrderError("Debes iniciar sesión para cambiar cantidad.");
+      return;
+    }
+    const newQty = item.cantidad + change;
+    if (newQty < 1) return;
+    if (newQty > item.stock) {
+      setOrderError(`No puedes exceder el stock (${item.stock}).`);
+      return;
+    }
+    try {
+      const res = await fetch(`${API_GATEWAY}/carrito/${item.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ cantidad: newQty }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        setOrderError(data.error || "Error al actualizar la cantidad.");
+      } else {
+        fetchCart();
+      }
+    } catch (err) {
+      console.error("Error al actualizar cantidad:", err);
+      setOrderError("Error de conexión. Intenta nuevamente.");
+    }
+  };
+
+  // Eliminar producto
+  const removeFromCart = async (cartItemId) => {
+    setOrderError("");
+    if (!token) {
+      setOrderError("Debes iniciar sesión para eliminar del carrito.");
+      return;
+    }
+    try {
+      const res = await fetch(`${API_GATEWAY}/carrito/${cartItemId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        setOrderError(data.error || "Error al eliminar producto.");
+      } else {
+        fetchCart();
+      }
+    } catch (err) {
+      console.error("Error al eliminar producto:", err);
+      setOrderError("Error de conexión. Intenta nuevamente.");
+    }
+  };
+
+  // Vaciar carrito
+  const clearCart = async () => {
+    setOrderError("");
+    if (!token) {
+      setOrderError("Debes iniciar sesión para vaciar el carrito.");
+      return;
+    }
+    for (const item of cart) {
+      try {
+        await fetch(`${API_GATEWAY}/carrito/${item.id}`, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      } catch (err) {
+        console.error("Error al vaciar carrito:", err);
+      }
+    }
+    fetchCart();
+  };
+
+  // Checkout -> POST /pedidos
   const handleCheckout = async () => {
+    setOrderError("");
     if (!shippingAddress.trim()) {
       setOrderError("Por favor ingresa una dirección de envío");
       return;
     }
-
+    if (!token) {
+      setOrderError("Debes iniciar sesión para completar la compra");
+      return;
+    }
     setIsProcessing(true);
-    setOrderError("");
 
     try {
-      const token = localStorage.getItem("authToken");
-      if (!token) {
-        setOrderError("Debes iniciar sesión para completar la compra");
-        setIsProcessing(false);
-        return;
-      }
-
-      const userData = JSON.parse(localStorage.getItem("userData"));
-      const userId = userData?.id;
-
-      const response = await fetch("/api/pedidos", {
+      const res = await fetch(`${API_GATEWAY}/pedidos`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          usuario_id: userId,
           direccion_envio: shippingAddress,
-        })
+        }),
       });
 
-      const data = await response.json();
-
-      if (response.ok && data.success) {
+      const data = await res.json();
+      if (res.ok && data.success) {
         setOrderSuccess(true);
-        clearCart();
-        
+        setCart([]);
+        // redirigir a la confirmación
         setTimeout(() => {
           navigate("/order-confirmation", { state: { orderId: data.pedidoId } });
         }, 3000);
@@ -115,53 +222,48 @@ const Cart = () => {
               <div key={item.id} className="cart-item">
                 <div className="item-info">
                   <img
-                    src={
-                      Array.isArray(item.imagenes) && item.imagenes.length > 0
-                        ? item.imagenes[0]
-                        : typeof item.imagenes === 'string' && item.imagenes
-                          ? item.imagenes
-                          : '/assets/default.jpg'
-                    }
+                    src={getItemImage(item)}
                     alt={item.nombre}
                     className="item-image"
                   />
                   <div className="item-details">
                     <h3>{item.nombre}</h3>
-                    <p className="item-category">{item.categoria || 'Sin categoría'}</p>
+                    <p className="item-category">
+                      {item.categoria || "Sin categoría"}
+                    </p>
                   </div>
                 </div>
 
-                <div className="item-price">${parseFloat(item.precio).toFixed(2)}</div>
+                <div className="item-price">
+                  ${parseFloat(item.precio).toFixed(2)}
+                </div>
 
                 <div className="item-quantity">
-                  <button 
+                  <button
                     className="quantity-btn"
                     onClick={() => handleQuantityChange(item, -1)}
-                    disabled={item.quantity <= 1}
-                    aria-label="Reducir cantidad"
+                    disabled={item.cantidad <= 1}
                   >
                     <FaMinus />
                   </button>
-                  <span className="quantity-number">{item.quantity}</span>
-                  <button 
+                  <span className="quantity-number">{item.cantidad}</span>
+                  <button
                     className="quantity-btn"
                     onClick={() => handleQuantityChange(item, 1)}
-                    disabled={item.quantity >= item.stock}
-                    aria-label="Aumentar cantidad"
+                    disabled={item.cantidad >= item.stock}
                   >
                     <FaPlus />
                   </button>
                 </div>
 
                 <div className="item-subtotal">
-                  ${(parseFloat(item.precio) * item.quantity).toFixed(2)}
+                  {(parseFloat(item.precio) * item.cantidad).toFixed(2)}
                 </div>
 
                 <div className="item-actions">
-                  <button 
+                  <button
                     className="remove-btn"
                     onClick={() => removeFromCart(item.id)}
-                    aria-label="Eliminar del carrito"
                   >
                     <FaTrash />
                   </button>
@@ -185,32 +287,27 @@ const Cart = () => {
               <span>${getCartTotal().toFixed(2)}</span>
             </div>
 
-            {/* Dirección de envío */}
             <div className="shipping-address">
               <h3>Dirección de envío</h3>
               <textarea
                 value={shippingAddress}
                 onChange={(e) => setShippingAddress(e.target.value)}
                 placeholder="Ingresa tu dirección completa de envío"
-                required
-                className="address-input"
               />
             </div>
 
-            {/* Botón de Checkout */}
-            <button 
-              className="checkout-btn" 
-              onClick={handleCheckout} 
+            <button
+              className="checkout-btn"
+              onClick={handleCheckout}
               disabled={isProcessing || !shippingAddress.trim()}
             >
               {isProcessing ? "Procesando..." : "Proceder al pago"}
             </button>
 
-            <button className="clear-cart-btn" onClick={() => clearCart()}>
+            <button className="clear-cart-btn" onClick={clearCart}>
               Vaciar carrito
             </button>
 
-            {/* Mensajes de éxito o error */}
             {orderSuccess && (
               <div className="order-success">
                 <div className="success-icon">✓</div>

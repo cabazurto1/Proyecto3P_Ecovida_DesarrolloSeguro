@@ -190,7 +190,6 @@ const Blog = () => {
     ? fruits 
     : fruits.filter(fruit => {
         if (selectedCategory === "lowCalorie") return fruit.nutritions.calories < 60;
-        if (selectedCategory === "highFiber") return fruit.nutritions.fiber > 2;
         if (selectedCategory === "lowSugar") return fruit.nutritions.sugar < 10;
         return true;
       });
@@ -244,12 +243,6 @@ const Blog = () => {
             <FaHeartbeat /> Bajas en calorías
           </button>
           <button 
-            className={selectedCategory === "highFiber" ? "active" : ""} 
-            onClick={() => setSelectedCategory("highFiber")}
-          >
-            <FaLeaf /> Altas en fibra
-          </button>
-          <button 
             className={selectedCategory === "lowSugar" ? "active" : ""} 
             onClick={() => setSelectedCategory("lowSugar")}
           >
@@ -280,30 +273,26 @@ const Blog = () => {
                 
                 <div className="nutrition-info">
                   <div className="nutrition-item">
-                    <span className="nutrition-label">Calorías</span>
+                    <span className="nutrition-label">Calorías: </span>
                     <span className="nutrition-value">{fruit.nutritions.calories} kcal</span>
                   </div>
                   <div className="nutrition-item">
-                    <span className="nutrition-label">Azúcar</span>
+                    <span className="nutrition-label">Azúcar: </span>
                     <span className="nutrition-value">{fruit.nutritions.sugar}g</span>
                   </div>
                   <div className="nutrition-item">
-                    <span className="nutrition-label">Carbohidratos</span>
+                    <span className="nutrition-label">Carbohidratos: </span>
                     <span className="nutrition-value">{fruit.nutritions.carbohydrates}g</span>
                   </div>
                   <div className="nutrition-item">
-                    <span className="nutrition-label">Proteínas</span>
+                    <span className="nutrition-label">Proteínas: </span>
                     <span className="nutrition-value">{fruit.nutritions.protein}g</span>
-                  </div>
-                  <div className="nutrition-item">
-                    <span className="nutrition-label">Fibra</span>
-                    <span className="nutrition-value">{fruit.nutritions.fiber || 0}g</span>
                   </div>
                 </div>
                 
                 {fruit.benefits && (
                   <div className="fruit-benefits">
-                    <h3>Beneficios</h3>
+                    <h3>Beneficios: </h3>
                     <p>{fruit.benefits}</p>
                   </div>
                 )}

@@ -4,15 +4,25 @@
     "description": "Microservicio para manejar los usuarios",
     "main": "index.js",
     "scripts": {
-        "start": "node index.js"
+      "start": "node index.js",
+      "test": "jest --forceExit"
     },
     "dependencies": {
-        "bcrypt": "^5.1.1",
-        "express": "^4.17.1",
-        "cors": "^2.8.5",
-        "joi": "^17.13.3",
-        "jsonwebtoken": "^9.0.2",
-        "pg": "^8.7.1",
-        "soap": "^1.1.6"
+      "bcrypt": "^5.1.1",
+      "express": "^4.17.1",
+      "cors": "^2.8.5",
+      "joi": "^17.13.3",
+      "jsonwebtoken": "^9.0.2",
+      "pg": "^8.7.1",
+      "soap": "^1.1.6"
+    },
+    "devDependencies": {
+      "jest": "^29.7.0",
+      "supertest": "^6.3.3",
+      "testcontainers": "^10.4.0"
+    },
+    "jest": {
+      "testEnvironment": "node",
+      "testTimeout": 60000
     }
-}
+  }

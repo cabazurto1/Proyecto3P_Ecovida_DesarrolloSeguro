@@ -4,7 +4,8 @@
     "description": "Microservicio para manejar los envíos",
     "main": "index.js",
     "scripts": {
-        "start": "node index.js"
+        "start": "node index.js",
+        "test": "jest --forceExit"
     },
     "dependencies": {
         "axios": "^1.7.9",
@@ -13,5 +14,14 @@
         "joi": "^17.13.3",
         "jsonwebtoken": "^9.0.2",
         "pg": "^8.7.1"
+    },
+    "devDependencies": {
+      "jest": "^29.7.0",
+      "supertest": "^6.3.3",
+      "testcontainers": "^10.4.0"
+    },
+    "jest": {
+      "testEnvironment": "node",
+      "testTimeout": 60000
     }
 }

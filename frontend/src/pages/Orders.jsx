@@ -9,12 +9,17 @@ const Orders = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Cargar pedidos del usuario (o todos para Administrador)
+  // Ajusta la URL si tu front no está dockerizado
+  const API_GATEWAY = "http://localhost";
+
   useEffect(() => {
-    fetch('/pedidos', {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-      },
+    if (!token) {
+      setOrders([]);
+      setLoading(false);
+      return;
+    }
+    fetch(`${API_GATEWAY}/pedidos`, {
+      headers: { 'Authorization': `Bearer ${token}` },
     })
       .then(response => {
         if (!response.ok) throw new Error('Error al cargar los pedidos.');
@@ -30,36 +35,53 @@ const Orders = () => {
       });
   }, [token]);
 
-  if (loading) return <div>Cargando pedidos...</div>;
-  if (error) return <div>Error: {error}</div>;
+  if (loading) return <div className="orders-loading">Cargando pedidos...</div>;
+  if (error) return <div className="orders-error">Error: {error}</div>;
+  if (orders.length === 0) {
+    return (
+      <div className="orders-container">
+        <h1>Mis Pedidos</h1>
+        <p>No tienes pedidos.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="orders-container">
       <h1>Mis Pedidos</h1>
-      {orders.length === 0 ? (
-        <p>No tienes pedidos.</p>
-      ) : (
-        <table className="orders-table">
-          <thead>
-            <tr>
-              <th>ID Pedido</th>
-              <th>Total</th>
-              <th>Estado</th>
-              <th>Fecha</th>
-            </tr>
-          </thead>
-          <tbody>
-            {orders.map(order => (
-              <tr key={order.id}>
-                <td>{order.id}</td>
-                <td>${parseFloat(order.total).toFixed(2)}</td>
-                <td>{order.estado}</td>
-                <td>{order.fecha ? new Date(order.fecha).toLocaleDateString() : 'N/A'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+
+      {orders.map((order) => (
+        <div key={order.id} className="order-card">
+          <h2>Pedido #{order.id}</h2>
+          <p><strong>Estado:</strong> {order.estado}</p>
+          <p><strong>Total:</strong> ${parseFloat(order.total).toFixed(2)}</p>
+          <p><strong>Fecha:</strong> {order.fecha ? new Date(order.fecha).toLocaleDateString() : 'N/A'}</p>
+
+          <h3>Productos:</h3>
+          {Array.isArray(order.items) && order.items.length > 0 ? (
+            <table className="order-items-table">
+              <thead>
+                <tr>
+                  <th>Producto</th>
+                  <th>Cantidad</th>
+                  <th>Precio Unit.</th>
+                </tr>
+              </thead>
+              <tbody>
+                {order.items.map((item, idx) => (
+                  <tr key={idx}>
+                    <td>{item.nombre || `ID:${item.producto_id}`}</td>
+                    <td>{item.cantidad}</td>
+                    <td>${parseFloat(item.precio_unitario).toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <p>No se encontraron productos en este pedido.</p>
+          )}
+        </div>
+      ))}
     </div>
   );
 };
