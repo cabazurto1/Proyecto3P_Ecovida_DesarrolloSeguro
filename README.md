@@ -158,7 +158,7 @@ Autores:
 9. CONTACTO
 --------------------------------------------
 Para comentarios o aportes:
-- Ricardo Rivadeneira (GitHub: @ricardo-riva)
-- Christopher Bazurto (GitHub: @chrisbazur)
+- Ricardo Rivadeneira (GitHub: @RicardoRivadeneira)
+- Christopher Bazurto (GitHub: @cabazurto1)
 
 ¡Gracias por apoyar la misión de EcoVida!
